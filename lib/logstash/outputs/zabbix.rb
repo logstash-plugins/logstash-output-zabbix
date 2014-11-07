@@ -15,13 +15,13 @@ require "shellwords"
 # In Zabbix, create your host with the same name (no spaces in the name of
 # the host supported) and create your item with the specified key as a
 # Zabbix Trapper item. Also you need to set field that will be send to zabbix
-# as item.value, otherwise @message wiil be sent.
+# as item.value, otherwise `@message` will be sent.
 #
 # The easiest way to use this output is with the grep filter.
 # Presumably, you only want certain events matching a given pattern
 # to send events to zabbix, so use grep or grok to match and also to add the required
 # fields.
-#
+# [source,ruby]
 #      filter {
 #        grep {
 #          type => "linux-syslog"
@@ -44,6 +44,7 @@ require "shellwords"
 #       }
 #     }
 #
+# [source,ruby]
 #     output {
 #       zabbix {
 #         # only process events with this tag
