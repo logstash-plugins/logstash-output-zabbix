@@ -1,147 +1,185 @@
 # encoding: utf-8
-require "logstash/namespace"
 require "logstash/outputs/base"
-require "shellwords"
+require "logstash/namespace"
+require "socket"
+require "timeout"
+require "zabbix_protocol"
 
-# The zabbix output is used for sending item data to zabbix via the
-# zabbix_sender executable.
+# The Zabbix output is used to send item data (key/value pairs) to a Zabbix
+# server.
 #
-# For this output to work, your event must have the following fields:
+# Zabbix uses a kind of nested key/value store.
 #
-# * "zabbix_host"    (the host configured in Zabbix)
-# * "zabbix_item"    (the item key on the host in Zabbix)
-# * "send_field"    (the field name that is sending to Zabbix)
+# [source,txt]
+#     host
+#       ├── item1
+#       │     └── value1
+#       ├── item2
+#       │     └── value2
+#       ├── ...
+#       │     └── ...
+#       ├── item_n
+#       │     └── value_n
 #
-# In Zabbix, create your host with the same name (no spaces in the name of
-# the host supported) and create your item with the specified key as a
-# Zabbix Trapper item. Also you need to set field that will be send to zabbix
-# as item.value, otherwise `@message` will be sent.
+# Each "host" is an identifier, and each item is associated with that host.
+# Item are typed on the Zabbix side.  You can send numbers as strings and Zabbix
+# will Do The Right Thing.
 #
-# The easiest way to use this output is with the grep filter.
-# Presumably, you only want certain events matching a given pattern
-# to send events to zabbix, so use grep or grok to match and also to add the required
-# fields.
-# [source,ruby]
-#      filter {
-#        grep {
-#          type => "linux-syslog"
-#          match => [ "@message", "(error|ERROR|CRITICAL)" ]
-#          add_tag => [ "zabbix-sender" ]
-#          add_field => [
-#            "zabbix_host", "%{source_host}",
-#            "zabbix_item", "item.key"
-#            "send_field", "field_name"
-#          ]
-#       }
-#        grok {
-#          match => [ "message", "%{SYSLOGBASE} %{DATA:data}" ]
-#          add_tag => [ "zabbix-sender" ]
-#          add_field => [
-#            "zabbix_host", "%{source_host}",
-#            "zabbix_item", "item.key",
-#            "send_field", "data"
-#          ]
-#       }
-#     }
+# In the Zabbix UI, ensure that your hostname matches the value referenced by
+# `zabbix_host`. Create the item with the key as it appears in the field
+# referenced by `zabbix_key`.  In the item configuration window, ensure that the
+# type dropdown is set to Zabbix Trapper. Also be sure to set the type of
+# information that Zabbix should expect for this item.
 #
-# [source,ruby]
-#     output {
-#       zabbix {
-#         # only process events with this tag
-#         tags => "zabbix-sender"
+# This plugin does not currently send in batches.  While it is possible to do
+# so, this is not supported.  Be careful not to flood your Zabbix server with
+# too many events per second.
 #
-#         # specify the hostname or ip of your zabbix server
-#         # (defaults to localhost)
-#         host => "localhost"
-#
-#         # specify the port to connect to (default 10051)
-#         port => "10051"
-#
-#         # specify the path to zabbix_sender
-#         # (defaults to "/usr/local/bin/zabbix_sender")
-#         zabbix_sender => "/usr/local/bin/zabbix_sender"
-#       }
-#     }
+# NOTE: This plugin will log a warning if a necessary field is missing. It will
+# not attempt to resend if Zabbix is down, but will log an error message.
+
 class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
-
   config_name "zabbix"
 
-  config :host, :validate => :string, :default => "localhost"
-  config :port, :validate => :number, :default => 10051
-  config :zabbix_sender, :validate => :path, :default => "/usr/local/bin/zabbix_sender"
+  # The IP or resolvable hostname where the Zabbix server is running
+  config :zabbix_server_host, :validate => :string, :default => "localhost"
+
+  # The port on which the Zabbix server is running
+  config :zabbix_server_port, :validate => :number, :default => 10051
+
+  # The field name which holds the Zabbix host name. This can be a sub-field of
+  # the @metadata field.
+  config :zabbix_host, :validate => :string, :required => true
+
+  # The field name which holds the Zabbix key. This can be a sub-field of
+  # the @metadata field.
+  config :zabbix_key, :validate => :string, :required => true
+
+  # The field name which holds the value you want to send.
+  config :zabbix_value, :validate => :string, :default => "message"
+
+  # The number of seconds to wait before giving up on a connection to the Zabbix
+  # server.  This number should be very small, otherwise delays in delivery of
+  # other outputs could result.
+  config :timeout, :validate => :number, :default => 1
 
   public
   def register
-    # nothing to do
   end # def register
+
+  public
+  def field_check(event, fieldname)
+    if !event[fieldname]
+      @logger.warn("Skipping zabbix output; field referenced by #{fieldname} is missing")
+      false
+    else
+      true
+    end
+  end
+
+  public
+  def format_request(event)
+    data = {
+      "request" => "sender data",
+      "data" => [{
+        "host" => event[@zabbix_host],
+        "key" => event[@zabbix_key],
+        "value" => event[@zabbix_value].to_s
+      }]
+    }
+  end
+
+  def response_check(event, data)
+    # {"response"=>"success", "info"=>"Processed 0; Failed 1; Total 1; seconds spent: 0.000018"}
+    unless data["response"] == "success"
+      @logger.error("Failed to send event to Zabbix",
+        :zabbix_response => data,
+        :event => event
+      )
+      false
+    else
+      true
+    end
+  end
+
+  def info_check(event, data)
+    # {"response"=>"success", "info"=>"processed 0; Failed 1; Total 1; seconds spent: 0.000018"}
+    if !data.is_a?(Hash)
+      @logger.error("Zabbix server at #{@zabbix_server_host} responded atypically.",
+        :returned_data => data
+      )
+      return false
+    end
+    # Prune the semicolons, then turn it into an array
+    info = (data["info"].delete! ';').split()
+    # ["processed", "0", "Failed", ";", "Total", "1", "seconds", "spent:", "0.000018"]
+    failed = info[3].to_i
+    total = info[5].to_i
+    if failed == total
+      @logger.warn("Zabbix server at #{@zabbix_server_host} rejected all items sent.",
+        :zabbix_host => event[@zabbix_host],
+        :zabbix_key => event[@zabbix_key],
+        :zabbix_value => event[@zabbix_value]
+      )
+      false
+    elsif failed > 0
+      @logger.warn("Zabbix server at #{@zabbix_server_host} rejected #{info[3]} item(s).",
+        :zabbix_host => event[@zabbix_host],
+        :zabbix_key => event[@zabbix_key],
+        :zabbix_value => event[@zabbix_value]
+      )
+      false
+    elsif failed == 0 && total > 0
+      true
+    else
+      false
+    end
+  end
+
+  def tcp_send(event)
+    begin
+      TCPSocket.open(@zabbix_server_host, @zabbix_server_port) do |sock|
+        data = format_request(event)
+        sock.print ZabbixProtocol.dump(data)
+        resp = ZabbixProtocol.load(sock.read)
+        @logger.debug? and @logger.debug("Zabbix server response",
+                              :response => resp, :data => data)
+        # Log whether the key/value pairs accepted
+        info_check(event, resp)
+        # Did the message get received by Zabbix?
+        response_check(event, resp)
+      end
+    rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
+      @logger.error("Connection error.  Unable to connect to Zabbix server",
+        :server => @zabbix_server_host,
+        :port => @zabbix_server_port.to_s
+      )
+      false
+    end
+  end
+
+  def send_to_zabbix(event)
+    begin
+      Timeout::timeout(@timeout) do
+        tcp_send(event)
+      end
+    rescue Timeout::Error
+      @logger.warn("Connection attempt to Zabbix server timed out.",
+        :server => @zabbix_server_host,
+        :port => @zabbix_server_port.to_s,
+        :timeout => @timeout.to_s
+      )
+      false
+    end
+  end
 
   public
   def receive(event)
     return unless output?(event)
-
-    if !File.exists?(@zabbix_sender)
-      @logger.warn("Skipping zabbix output; zabbix_sender file is missing",
-                   :zabbix_sender => @zabbix_sender, :missed_event => event)
-      return
+    for field in [@zabbix_host, @zabbix_key, @zabbix_value]
+      return unless field_check(event, field)
     end
+    send_to_zabbix(event)
+  end # def event
 
-    host = Array(event["zabbix_host"])
-    if host.empty?
-      @logger.warn("Skipping zabbix output; zabbix_host field is missing",
-                   :missed_event => event)
-      return
-    end
-
-    item = Array(event["zabbix_item"])
-    if item.empty?
-      @logger.warn("Skipping zabbix output; zabbix_item field is missing",
-                   :missed_event => event)
-      return
-    end
-
-    field = Array(event["send_field"])
-    if field.empty?
-      field = ["message"]
-    end
-
-    item.each_with_index do |key, index|
-
-      if field[index].nil? || (zmsg = event[field[index]]).nil?
-        @logger.warn("No zabbix message to send in event field #{field[index].inspect}", :field => field, :index => index, :event => event)
-        next
-      end
-
-      cmd = [@zabbix_sender, "-z", @host, "-p", @port, "-s", host[index].to_s, "-k", item[index].to_s, "-o", zmsg.to_s, "-v"]
-
-      @logger.debug("Running zabbix command", :command => cmd.join(" "))
-
-      begin
-        f = IO.popen(cmd, "r")
-
-        command_output = f.gets
-        command_processed = command_output[/processed: (\d+)/, 1]
-        command_failed = command_output[/failed: (\d+)/, 1]
-        command_total = command_output[/total: (\d+)/, 1]
-        command_seconds_spent = command_output[/seconds spent: ([\d\.]+)/, 1]
-
-        @logger.info("Message was sent to zabbix server",
-                     :command => cmd, :event => event,
-                     :command_processed => command_processed,
-                     :command_failed => command_failed,
-                     :command_total => command_total,
-                     :command_seconds_spent => command_seconds_spent)
-      rescue => e
-        @logger.warn("Skipping zabbix output; error calling zabbix_sender",
-                     :command => cmd, :missed_event => event,
-                     :exception => e, :backtrace => e.backtrace)
-      ensure
-        begin
-          f.close unless f.closed?
-        rescue => e
-          @logger.warn("Error during closing zabbix_sender subprocess",
-                     :exception => e, :backtrace => e.backtrace)
-        end
-      end
-    end
-  end # def receive
 end # class LogStash::Outputs::Zabbix
