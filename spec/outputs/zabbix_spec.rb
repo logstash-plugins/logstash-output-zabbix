@@ -133,7 +133,6 @@ describe LogStash::Outputs::Zabbix do
   end
 
   describe "Integration Tests", :integration => true do
-    require 'pry'
     # Let the crazy one-liner definition begin:
     # Docker.url.split(':')[1][2..-1]
     # Docker.url = tcp://192.168.123.205:2375
@@ -198,7 +197,6 @@ describe LogStash::Outputs::Zabbix do
       context "when the Zabbix server responds with 'success'" do
         subject { output.tcp_send(string_event) }
         it "should return true" do
-          # binding.pry
           expect(subject).to eq(true)
         end
       end
