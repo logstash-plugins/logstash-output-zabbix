@@ -1,12 +1,12 @@
 Gem::Specification.new do |s|
-  s.name = 'logstash-output-zabbix'
-  s.version = "0.1.4"
-  s.licenses = ["Apache License (2.0)"]
-  s.summary = "This output sends key/value pairs to a Zabbix server."
-  s.description = "This gem is a logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/plugin install gemname. This gem is not a stand-alone program"
-  s.authors = ["Elastic"]
-  s.email = "info@elastic.co"
-  s.homepage = "http://www.elastic.co/guide/en/logstash/current/index.html"
+  s.name          = 'logstash-output-zabbix'
+  s.version       = "0.1.4"
+  s.licenses      = ["Apache License (2.0)"]
+  s.summary       = "This output sends key/value pairs to a Zabbix server."
+  s.description   = "This gem is a logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/plugin install gemname. This gem is not a stand-alone program"
+  s.authors       = ["Elastic"]
+  s.email         = "info@elastic.co"
+  s.homepage      = "http://www.elastic.co/guide/en/logstash/current/index.html"
   s.require_paths = ["lib"]
 
   # Files
@@ -22,7 +22,6 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "zabbix_protocol"
   s.add_runtime_dependency "logstash-codec-plain"
   s.add_development_dependency "logstash-devutils", ">= 0.0.12"
-  s.add_development_dependency "logstash-input-generator"
   s.add_development_dependency "logstash-filter-mutate"
   s.add_development_dependency "docker-api"
 end
