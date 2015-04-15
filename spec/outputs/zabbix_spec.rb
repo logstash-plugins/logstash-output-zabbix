@@ -7,7 +7,10 @@ require "socket"
 require "timeout"
 require "docker"
 
-# This is used to ensure the Docker instance is up and running
+
+CONTAINER_NAME = "zabbix_container_" + rand(99).to_s
+
+# This is used to ensure the Docker Zabbix port is up and running
 def port_open?(ip, port, seconds=1)
   Timeout::timeout(seconds) do
     begin
@@ -89,13 +92,20 @@ def zabbix_server_up?
 end
 
 describe LogStash::Outputs::Zabbix do
+  # Building block "lets"
   let(:port) { 10051 }
   let(:host) { "127.0.0.1" }
+  let(:timeout) { 1 }
+  let(:timestamp) { "2015-04-15T15:39:42Z" }
+  let(:epoch) { 1429112382 } # This is the epoch value of the above timestamp
   let(:zabhost) { "zabbix.example.com" }
   let(:zabkey) { "zabbix.key" }
   let(:message) { "This is a log entry." }
+
+  # Assembled "lets"
   let(:event_hash) {
     {
+      "@timestamp" => timestamp,
       "message" => message,
       "zabhost" => zabhost,
       "zabkey"  => zabkey,
@@ -107,15 +117,13 @@ describe LogStash::Outputs::Zabbix do
       "zabbix_server_port" => port,
       "zabbix_host" => "zabhost",
       "zabbix_key" => "zabkey",
-      "zabbix_value" => "message",
+      "timeout" => timeout
     }
   }
 
+  # Finished object "lets"
   let(:string_event) { LogStash::Event.new(event_hash) }
   let(:output) { LogStash::Outputs::Zabbix.new(zabout) }
-  let(:server) { Mocks::ZabbixServer.new }
-  let(:success_msg) { {"response" => "success", "info" => "processed 1; Failed 0; Total 1; seconds spent: 0.000018"} }
-  let(:fail_msg) { {"response" => "success", "info" => "processed 0; Failed 1; Total 1; seconds spent: 0.000018"} }
 
   before do
     output.register
@@ -124,31 +132,48 @@ describe LogStash::Outputs::Zabbix do
   describe "Unit Tests" do
     describe "#field_check" do
       context "when expected field not found" do
-        subject { output.field_check(:string_event, "not_appearing") }
+        subject { output.field_check(string_event, "not_appearing") }
         it "should return false" do
           expect(subject).to eq(false)
         end
       end
       context "when expected field found" do
-        subject { output.field_check(:string_event, "zabhost") }
+        subject { output.field_check(string_event, "zabhost") }
         it "should return true" do
-          expect(subject).to eq(false)
+          expect(subject).to eq(true)
         end
       end
     end
 
     describe "#format_request" do
-      subject { output.format_request(string_event) }
-      it "should return a Zabbix sender data object" do
-        val = {
-          "request" => "sender data",
-          "data" => [{
-            "host" => "zabbix.example.com",
-            "key" => "zabbix.key",
-            "value" => "This is a log entry."
-          }]
-        }
-        expect(subject).to eq(val)
+      context "when it receives an event" do
+        # {
+        #   "request" => "sender data",
+        #   "data" => [{
+        #     "host" => "zabbix.example.com",
+        #     "key" => "zabbix.key",
+        #     "value" => "This is a log entry.",
+        #     "clock" => 1429112382
+        #   }],
+        #   "clock" => 1429112394
+        # }
+        subject { output.format_request(string_event) }
+        it "should return a Zabbix sender data object with the correct host" do
+          expect(subject['data'][0]['host']).to eq(zabhost)
+        end
+        it "should return a Zabbix sender data object with the correct key" do
+          expect(subject['data'][0]['key']).to eq(zabkey)
+        end
+        it "should return a Zabbix sender data object with the correct value" do
+          expect(subject['data'][0]['value']).to eq(message)
+        end
+        it "should return a Zabbix sender data object with the correct clock from @timestamp" do
+          expect(subject['data'][0]['clock']).to eq(epoch)
+        end
+        it "should return a Zabbix sender data object with the correct clock" do
+          diff = Time.now.to_i - subject['clock']
+          expect(diff).to be < 3 # It should take less than 3 seconds for this.
+        end
       end
     end
 
@@ -177,6 +202,7 @@ describe LogStash::Outputs::Zabbix do
 
     describe "#info_check" do
       context "when it receives a success value" do
+        let(:success_msg) { {"response" => "success", "info" => "processed 1; Failed 0; Total 1; seconds spent: 0.000018"} }
         subject { output.info_check(string_event, success_msg) }
         it "should return true" do
           expect(subject).to eq(true)
@@ -184,6 +210,7 @@ describe LogStash::Outputs::Zabbix do
       end
 
       context "when it receives a non-success value" do
+        let(:fail_msg) { {"response" => "success", "info" => "processed 0; Failed 1; Total 1; seconds spent: 0.000018"} }
         subject { output.info_check(string_event, fail_msg) }
         it "should return false" do
           expect(subject).to eq(false)
@@ -201,23 +228,14 @@ describe LogStash::Outputs::Zabbix do
   end
 
   describe "Integration Tests", :integration => true do
-    let(:ip) { get_docker_ip }
-    let(:remote_zabbix) {
-      { "zabbix_server_host" => ip,
-        "zabbix_host" => "zabhost",
-        "zabbix_key" => "zabkey",
-        "zabbix_value" => "message",
-        "timeout" => 3,
-      }
-    }
+    let(:host) { get_docker_ip }
 
-    let(:output) { LogStash::Outputs::Zabbix.new(remote_zabbix) }
-
+    # Only open the container once for all tests.
     before(:all) do
       zabbix_ip = get_docker_ip
       port = 10051
       container = Docker::Container.create(
-        "name" => "zabbix_output_test",
+        "name" => CONTAINER_NAME,
         "Cmd" => ["run"],
         "Image" => "untergeek/logstash_output_zabbix_rspec",
         "ExposedPorts" => { "#{port}/tcp" => {} },
@@ -238,7 +256,7 @@ describe LogStash::Outputs::Zabbix do
     end
 
     after(:all) do
-      container = Docker::Container.get('zabbix_output_test')
+      container = Docker::Container.get(CONTAINER_NAME)
       container.stop
       container.delete(:force => true)
     end
@@ -252,14 +270,7 @@ describe LogStash::Outputs::Zabbix do
       end
 
       context "when the Zabbix server responds that some items were unsuccessful" do
-        let(:string_event) {
-          {
-            "message" => "This is a log entry.",
-            "zabhost" => "something_else.example.com",
-            "zabkey" => "zabbix.key",
-            "zabvalue" => "value",
-          }
-        }
+        let(:zabhost) { "something_else.example.com" }
         subject { output.tcp_send(string_event) }
         it "should still return true" do
           expect(subject).to eq(true)
@@ -277,13 +288,8 @@ describe LogStash::Outputs::Zabbix do
       end
 
       context "when the Zabbix server cannot connect", :integration => true do
-        let(:output) { LogStash::Outputs::Zabbix.new({
-          "zabbix_server_host" => "172.19.74.123", # Arbitrary private IP
-          "zabbix_server_port" => 12345, # Arbitrary bad port
-          "zabbix_host" => "zabhost",
-          "zabbix_key" => "zabkey",
-          "zabbix_value" => "message",
-        }) }
+        let(:host) { "172.19.74.123" }
+        let(:port) { 12345 }
         subject { output.send_to_zabbix(string_event) }
         it "should timeout and return false" do
           expect(subject).to eq(false)
