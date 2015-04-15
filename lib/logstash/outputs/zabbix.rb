@@ -22,8 +22,8 @@ require "zabbix_protocol"
 #       │     └── value_n
 #
 # Each "host" is an identifier, and each item is associated with that host.
-# Item are typed on the Zabbix side.  You can send numbers as strings and Zabbix
-# will Do The Right Thing.
+# Items are typed on the Zabbix side.  You can send numbers as strings and
+# Zabbix will Do The Right Thing.
 #
 # In the Zabbix UI, ensure that your hostname matches the value referenced by
 # `zabbix_host`. Create the item with the key as it appears in the field
@@ -59,7 +59,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
   config :zabbix_value, :validate => :string, :default => "message"
 
   # The number of seconds to wait before giving up on a connection to the Zabbix
-  # server.  This number should be very small, otherwise delays in delivery of
+  # server. This number should be very small, otherwise delays in delivery of
   # other outputs could result.
   config :timeout, :validate => :number, :default => 1
 
