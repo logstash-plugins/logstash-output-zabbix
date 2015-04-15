@@ -9,6 +9,8 @@ require "docker"
 
 
 CONTAINER_NAME = "zabbix_container_" + rand(99).to_s
+IMAGE = "untergeek/logstash_output_zabbix_rspec"
+TAG = "zabbix_v2.2.2"
 
 # This is used to ensure the Docker Zabbix port is up and running
 def port_open?(ip, port, seconds=1)
@@ -237,7 +239,7 @@ describe LogStash::Outputs::Zabbix do
       container = Docker::Container.create(
         "name" => CONTAINER_NAME,
         "Cmd" => ["run"],
-        "Image" => "untergeek/logstash_output_zabbix_rspec",
+        "Image" => "#{IMAGE}:#{TAG}",
         "ExposedPorts" => { "#{port}/tcp" => {} },
         "Tty" => true,
         "HostConfig" => {

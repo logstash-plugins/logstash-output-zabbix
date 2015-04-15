@@ -1,12 +1,14 @@
 # Docker Image For Testing This Plugin
 
+The current image tag is: `zabbix_v2.2.2`
+
 ## Docker Hub
 
 The completed image is hosted at https://registry.hub.docker.com/u/untergeek/logstash_output_zabbix_rspec/
 
 You can manually pull it to your Docker installation by running
 
-    docker pull untergeek/logstash_output_zabbix_rspec
+    docker pull untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2
 
 Learn more about Docker at http://docs.docker.com
 
@@ -60,7 +62,7 @@ The image is then pushed to the Docker Hub:
 While the RSpec test handles creating a container from this image, and then
 deleting when done, you can manually run the image, if needed:
 
-    docker run -i --name="logstash_zabbix_rspec" -d -p 10051:10051 untergeek/logstash_output_zabbix_rspec run
+    docker run -i --name="logstash_zabbix_rspec" -d -p 10051:10051 untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2 run
 
 This command ensures that port 10051 is forwarded from the container to the
 container host.  The `run` command at the end runs `run.sh` as in this directory.
@@ -69,7 +71,7 @@ container host.  The `run` command at the end runs `run.sh` as in this directory
 
 You can also run Zabbix interactively, as though you were on the server:
 
-    docker run -i -t -p 10051:10051 untergeek/logstash_output_zabbix_rspec /bin/bash
+    docker run -i -t -p 10051:10051 untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2 /bin/bash
 
 At this point, you'd need to run `service mysql start` and `service zabbix-server start`
 to fully initialize the server, but you have the ability to see the logs, or
