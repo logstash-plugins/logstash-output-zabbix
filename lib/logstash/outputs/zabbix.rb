@@ -6,8 +6,11 @@ require "timeout"
 require "zabbix_protocol"
 
 # The Zabbix output is used to send item data (key/value pairs) to a Zabbix
-# server.
+# server.  The event `@timestamp` will automatically be associated with the
+# Zabbix item data.
 #
+# The Zabbix Sender protocol is described at
+# https://www.zabbix.org/wiki/Docs/protocols/zabbix_sender/2.0
 # Zabbix uses a kind of nested key/value store.
 #
 # [source,txt]
@@ -79,13 +82,18 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
 
   public
   def format_request(event)
-    data = {
+    # The nested `clock` value is the event timestamp
+    # The ending `clock` value is "now" so Zabbix knows it's not receiving stale
+    # data.
+    {
       "request" => "sender data",
       "data" => [{
         "host" => event[@zabbix_host],
         "key" => event[@zabbix_key],
-        "value" => event[@zabbix_value].to_s
-      }]
+        "value" => event[@zabbix_value].to_s,
+        "clock" => event["@timestamp"].to_i
+      }],
+      "clock" => Time.now.to_i,
     }
   end
 
