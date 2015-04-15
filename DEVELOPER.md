@@ -16,9 +16,11 @@ This plugin has RSpec integration tests which use a Docker image.
 
 If you are using Docker already, you can prime your Docker instance with
 
-    docker pull untergeek/logstash_output_zabbix_rspec
+    docker pull untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2
 
 Otherwise, it should pull automatically on the first run (which could take a few minutes, depending on your connection).
+
+See [docker/README.md](https://github.com/logstash-plugins/logstash-output-zabbix/blob/master/docker/README.md) for more information about Docker.
 
 #### Local Docker
 
