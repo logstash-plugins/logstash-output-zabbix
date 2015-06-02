@@ -113,13 +113,33 @@ describe LogStash::Outputs::Zabbix do
       "zabkey"  => zabkey,
     }
   }
+  let(:multi_value) {
+    {
+      "@timestamp" => timestamp,
+      "message"    => message,
+      "zabhost"    => zabhost,
+      "key1"       => zabkey,
+      "val1"       => "value1",
+      "key2"       => "zabbix.key2",
+      "val2"       => "value2",
+    }
+  }
   let(:zabout) {
     {
       "zabbix_server_host" => host,
       "zabbix_server_port" => port,
-      "zabbix_host" => "zabhost",
-      "zabbix_key" => "zabkey",
-      "timeout" => timeout
+      "zabbix_host"        => "zabhost",
+      "zabbix_key"         => "zabkey",
+      "timeout"            => timeout,
+    }
+  }
+  let(:mzabout) {
+    {
+      "zabbix_server_host" => host,
+      "zabbix_server_port" => port,
+      "zabbix_host"        => "zabhost",
+      "multi_value"        => ["key1", "val1", "key2", "val2"],
+      "timeout"            => timeout,
     }
   }
 
@@ -147,7 +167,7 @@ describe LogStash::Outputs::Zabbix do
       end
     end
 
-    describe "#format_request" do
+    describe "#format_request (single key/value pair)" do
       context "when it receives an event" do
         # {
         #   "request" => "sender data",
@@ -171,6 +191,45 @@ describe LogStash::Outputs::Zabbix do
         end
         it "should return a Zabbix sender data object with the correct clock from @timestamp" do
           expect(subject['data'][0]['clock']).to eq(epoch)
+        end
+        it "should return a Zabbix sender data object with the correct clock" do
+          diff = Time.now.to_i - subject['clock']
+          expect(diff).to be < 3 # It should take less than 3 seconds for this.
+        end
+      end
+    end
+
+    describe "#format_request (multiple key/value pairs)" do
+      let(:multival_event) { LogStash::Event.new(multi_value) }
+      let(:m_output) { LogStash::Outputs::Zabbix.new(mzabout) }
+      context "when it receives an event and is configured for multiple values" do
+        subject { m_output.format_request(multival_event) }
+        it "should return a Zabbix sender data object with a data array" do
+          expect(subject['data'].length).to eq(2)
+        end
+        it "should return a Zabbix sender data object with the correct host [0]" do
+          expect(subject['data'][0]['host']).to eq(zabhost)
+        end
+        it "should return a Zabbix sender data object with the correct key [0]" do
+          expect(subject['data'][0]['key']).to eq(zabkey)
+        end
+        it "should return a Zabbix sender data object with the correct value [0]" do
+          expect(subject['data'][0]['value']).to eq('value1')
+        end
+        it "should return a Zabbix sender data object with the correct clock from @timestamp [0]" do
+          expect(subject['data'][0]['clock']).to eq(epoch)
+        end
+        it "should return a Zabbix sender data object with the correct host [1]" do
+          expect(subject['data'][1]['host']).to eq(zabhost)
+        end
+        it "should return a Zabbix sender data object with the correct key [1]" do
+          expect(subject['data'][1]['key']).to eq('zabbix.key2')
+        end
+        it "should return a Zabbix sender data object with the correct value [1]" do
+          expect(subject['data'][1]['value']).to eq('value2')
+        end
+        it "should return a Zabbix sender data object with the correct clock from @timestamp [1]" do
+          expect(subject['data'][1]['clock']).to eq(epoch)
         end
         it "should return a Zabbix sender data object with the correct clock" do
           diff = Time.now.to_i - subject['clock']
