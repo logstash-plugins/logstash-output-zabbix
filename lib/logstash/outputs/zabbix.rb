@@ -4,6 +4,7 @@ require "logstash/namespace"
 require "socket"
 require "timeout"
 require "zabbix_protocol"
+require 'pry'
 
 # The Zabbix output is used to send item data (key/value pairs) to a Zabbix
 # server.  The event `@timestamp` will automatically be associated with the
@@ -54,12 +55,27 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
   # the @metadata field.
   config :zabbix_host, :validate => :string, :required => true
 
-  # The field name which holds the Zabbix key. This can be a sub-field of
-  # the @metadata field.
-  config :zabbix_key, :validate => :string, :required => true
+  # A single field name which holds the value you intend to use as the Zabbix
+  # item key. This can be a sub-field of the @metadata field.
+  # This directive will be ignored if using `multi_value`
+  config :zabbix_key, :validate => :string
 
   # The field name which holds the value you want to send.
+  # This directive will be ignored if using `multi_value`
   config :zabbix_value, :validate => :string, :default => "message"
+
+  # Use the `multi_value` directive to send multiple key/value pairs.
+  # This can be thought of as an array, like:
+  #
+  # `[ zabbix_key1, zabbix_value1, zabbix_key2, zabbix_value2, ... zabbix_keyN, zabbix_valueN ]`
+  #
+  # ...where `zabbix_key1` is an instance of `zabbix_key`, and `zabbix_value1`
+  # is an instance of `zabbix_value`.  If the field referenced by any
+  # `zabbix_key` or `zabbix_value` does not exist, that entry will be ignored.
+  #
+  # This directive cannot be used in conjunction with the single-value directives
+  # `zabbix_key` and `zabbix_value`.
+  config :multi_value, :validate => :array
 
   # The number of seconds to wait before giving up on a connection to the Zabbix
   # server. This number should be very small, otherwise delays in delivery of
@@ -68,12 +84,27 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
 
   public
   def register
+    if !@zabbix_key.nil? && !@multi_value.nil?
+      @logger.warn("Cannot use multi_value in conjunction with zabbix_key/zabbix_value.  Ignoring zabbix_key.")
+    end
+
+    # We're only going to use @multi_value in the end, so let's build it from
+    # @zabbix_key and @zabbix_value if it is empty (single value configuration).
+    if @multi_value.nil?
+      @multi_value = [ @zabbix_key, @zabbix_value ]
+    end
+
+    if @multi_value.length % 2 == 1
+      raise LogStash::ConfigurationError, I18n.t("logstash.agent.configuration.invalid_plugin_register",
+        :plugin => "output", :type => "zabbix",
+        :error => "Invalid zabbix configuration #{@multi_value}. multi_value requires an even number of elements as ['zabbix_key1', 'zabbix_value1', 'zabbix_key2', 'zabbix_value2']")
+    end
   end # def register
 
   public
   def field_check(event, fieldname)
     if !event[fieldname]
-      @logger.warn("Skipping zabbix output; field referenced by #{fieldname} is missing")
+      @logger.warn("Field referenced by #{fieldname} is missing")
       false
     else
       true
@@ -81,18 +112,44 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
   end
 
   public
+  def kv_check(event, key_field, value_field)
+    errors = 0
+    for field in [key_field, value_field]
+      errors += 1 unless field_check(event, field)
+    end
+    errors < 1 ? true : false
+  end # kv_check
+
+  public
+  def validate_fields(event)
+    found = []
+    (0..@multi_value.length-1).step(2) do |idx|
+      if kv_check(event, @multi_value[idx], @multi_value[idx+1])
+        found << @multi_value[idx]
+        found << @multi_value[idx+1]
+      end
+    end
+    found
+  end # validate_fields
+
+  public
   def format_request(event)
     # The nested `clock` value is the event timestamp
     # The ending `clock` value is "now" so Zabbix knows it's not receiving stale
     # data.
+    validated = validate_fields(event)
+    data = []
+    (0..validated.length-1).step(2) do |idx|
+      data << {
+        "host"  => event[@zabbix_host],
+        "key"   => event[validated[idx]],
+        "value" => event[validated[idx+1]],
+        "clock" => event["@timestamp"].to_i
+      }
+    end
     {
       "request" => "sender data",
-      "data" => [{
-        "host" => event[@zabbix_host],
-        "key" => event[@zabbix_key],
-        "value" => event[@zabbix_value].to_s,
-        "clock" => event["@timestamp"].to_i
-      }],
+      "data" => data,
       "clock" => Time.now.to_i,
     }
   end
@@ -125,16 +182,12 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
     total = info[5].to_i
     if failed == total
       @logger.warn("Zabbix server at #{@zabbix_server_host} rejected all items sent.",
-        :zabbix_host => event[@zabbix_host],
-        :zabbix_key => event[@zabbix_key],
-        :zabbix_value => event[@zabbix_value]
+        :zabbix_host => event[@zabbix_host]
       )
       false
     elsif failed > 0
       @logger.warn("Zabbix server at #{@zabbix_server_host} rejected #{info[3]} item(s).",
-        :zabbix_host => event[@zabbix_host],
-        :zabbix_key => event[@zabbix_key],
-        :zabbix_value => event[@zabbix_value]
+        :zabbix_host => event[@zabbix_host]
       )
       false
     elsif failed == 0 && total > 0
@@ -184,9 +237,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
   public
   def receive(event)
     return unless output?(event)
-    for field in [@zabbix_host, @zabbix_key, @zabbix_value]
-      return unless field_check(event, field)
-    end
+    return unless field_check(event, @zabbix_host)
     send_to_zabbix(event)
   end # def event
 
