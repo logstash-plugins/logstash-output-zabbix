@@ -5,97 +5,22 @@ require "logstash/event"
 require "zabbix_protocol"
 require "socket"
 require "timeout"
-require "docker"
+require_relative "../helpers/stevedore"
+require_relative "../helpers/zabbix_helper"
 
+RSpec.configure do |c|
+  c.include Stevedore
+  c.include ZabbixHelper
+end
 
-CONTAINER_NAME = "zabbix_container_" + rand(99).to_s
+NAME = "logstash-output-zabbix-#{rand(999).to_s}"
 IMAGE = "untergeek/logstash_output_zabbix_rspec"
-TAG = "zabbix_v2.2.2"
-
-# This is used to ensure the Docker Zabbix port is up and running
-def port_open?(ip, port, seconds=1)
-  Timeout::timeout(seconds) do
-    begin
-      TCPSocket.new(ip, port).close
-      true
-    rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
-      false
-    end
-  end
-rescue Timeout::Error
-  false
-end
-
-def get_docker_ip
-  # Let the crazy one-liner definition begin:
-  # Docker.url.split(':')[1][2..-1]
-  # Docker.url = tcp://192.168.123.205:2375
-  #   split(':') = ["tcp", "//192.168.123.205", "2375"]
-  #   [1] = "//192.168.123.205"
-  #   [2..-1] = "192.168.123.205"
-  # This last bit prunes the leading //
-  url = Docker.url
-  ip = "127.0.0.1"
-  case url.split(':')[0]
-  when 'unix'
-    ip = "127.0.0.1"
-  when 'tcp'
-    ip = url.split(':')[1][2..-1]
-  end
-  ip
-end
-
-def port_responding?(ip, port)
-  # Try for up to 10 seconds to get a response
-  10.times do
-    if port_open?(ip, port)
-      return true
-    else
-      sleep 1
-    end
-  end
-  false
-end
-
-def zabbix_server_up?
-  zabbix_ip = get_docker_ip
-  port = 10051
-  test_cfg = { "zabbix_server_host" => zabbix_ip, "zabbix_host" => "zabhost", "zabbix_key" => "zabkey", "zabbix_value" => "message" }
-  test_event = LogStash::Event.new({ "message" => "This is a log entry.", "zabhost" => "zabbix.example.com", "zabkey" => "zabbix.key" })
-  test_out = LogStash::Outputs::Zabbix.new(test_cfg)
-  data = test_out.format_request(test_event)
-  if port_responding?(zabbix_ip, port)
-    ###
-    ### This is a hacky way to guarantee that Zabbix is responsive, because the
-    ### port check alone is insufficient.  TCP tests say the port is open, but
-    ### it can take another 2 to 5 seconds (depending on the machine) before it
-    ### is responding in the way we need for these tests.
-    ###
-    resp = ""
-    # Try for up to 10 seconds to get a response.
-    10.times do
-      TCPSocket.open(zabbix_ip, port) do |sock|
-        sock.print ZabbixProtocol.dump(data)
-        resp = sock.read
-      end
-      if resp.length == 0
-        sleep 1
-      else
-        return true
-      end
-    end
-    if resp.length == 0
-      puts "Zabbix server or db is unreachable"
-    end
-  else
-    puts "Unable to reach Zabbix server on #{zabbix_ip}:#{port}"
-  end
-  false
-end
+TAG = "latest"
+ZABBIX_PORT = 10051
 
 describe LogStash::Outputs::Zabbix do
   # Building block "lets"
-  let(:port) { 10051 }
+  let(:port) { ZABBIX_PORT }
   let(:host) { "127.0.0.1" }
   let(:timeout) { 1 }
   let(:timestamp) { "2015-04-15T15:39:42Z" }
@@ -289,40 +214,28 @@ describe LogStash::Outputs::Zabbix do
   end
 
   describe "Integration Tests", :integration => true do
-    let(:host) { get_docker_ip }
 
-    # Only open the container once for all tests.
     before(:all) do
-      zabbix_ip = get_docker_ip
-      port = 10051
-      container = Docker::Container.create(
-        "name" => CONTAINER_NAME,
-        "Cmd" => ["run"],
-        "Image" => "#{IMAGE}:#{TAG}",
-        "ExposedPorts" => { "#{port}/tcp" => {} },
-        "Tty" => true,
-        "HostConfig" => {
-          "PortBindings" => {
-            "#{port}/tcp" => [
-              {
-                "HostIp" => "",
-                "HostPort" => "#{port}"
-              }
-            ]
-          }
-        }
+      container = create_container(
+        "#{IMAGE}:#{TAG}",    # Image to use
+        NAME,                 # Container name
+        {
+          "Cmd" => ["run"],
+          "Tty" => true,
+        }                     # Extra arguments, if any
       )
       container.start
-      zabbix_server_up?
+      zabbix_server_up?(get_host_ip, get_randomized_port(container, ZABBIX_PORT))
     end
 
     after(:all) do
-      container = Docker::Container.get(CONTAINER_NAME)
-      container.stop
-      container.delete(:force => true)
+      cleanup_container(NAME)
     end
 
     describe "#tcp_send", :integration => true do
+      let(:container) { Docker::Container.get(NAME) }
+      let(:port) { get_randomized_port(container, ZABBIX_PORT) }
+      let(:host) { get_host_ip }
       context "when the Zabbix server responds with 'success'" do
         subject { output.tcp_send(string_event) }
         it "should return true" do
@@ -341,6 +254,9 @@ describe LogStash::Outputs::Zabbix do
     end
 
     describe "#send_to_zabbix", :integration => true do
+      let(:container) { Docker::Container.get(NAME) }
+      let(:port) { get_randomized_port(container, ZABBIX_PORT) }
+      let(:host) { get_host_ip }
       context "when an event is sent successfully" do
         subject { output.send_to_zabbix(string_event) }
         it "should return true" do
