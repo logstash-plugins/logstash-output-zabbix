@@ -4,7 +4,6 @@ require "logstash/namespace"
 require "socket"
 require "timeout"
 require "zabbix_protocol"
-require 'pry'
 
 # The Zabbix output is used to send item data (key/value pairs) to a Zabbix
 # server.  The event `@timestamp` will automatically be associated with the
@@ -93,7 +92,6 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
     if @multi_value.nil?
       @multi_value = [ @zabbix_key, @zabbix_value ]
     end
-
     if @multi_value.length % 2 == 1
       raise LogStash::ConfigurationError, I18n.t("logstash.agent.configuration.invalid_plugin_register",
         :plugin => "output", :type => "zabbix",
