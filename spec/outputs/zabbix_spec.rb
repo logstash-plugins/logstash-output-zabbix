@@ -5,11 +5,10 @@ require "logstash/event"
 require "zabbix_protocol"
 require "socket"
 require "timeout"
-require_relative "../helpers/stevedore"
+require "longshoreman"
 require_relative "../helpers/zabbix_helper"
 
 RSpec.configure do |c|
-  c.include Stevedore
   c.include ZabbixHelper
 end
 
@@ -43,9 +42,9 @@ describe LogStash::Outputs::Zabbix do
       "@timestamp" => timestamp,
       "message"    => message,
       "zabhost"    => zabhost,
-      "key1"       => zabkey,
+      "key1"       => "multi1",
       "val1"       => "value1",
-      "key2"       => "zabbix.key2",
+      "key2"       => "multi2",
       "val2"       => "value2",
     }
   }
@@ -77,22 +76,27 @@ describe LogStash::Outputs::Zabbix do
   end
 
   describe "Unit Tests" do
+
     describe "#field_check" do
+
       context "when expected field not found" do
         subject { output.field_check(string_event, "not_appearing") }
         it "should return false" do
           expect(subject).to eq(false)
         end
       end
+
       context "when expected field found" do
         subject { output.field_check(string_event, "zabhost") }
         it "should return true" do
           expect(subject).to eq(true)
         end
       end
-    end
+
+    end # "#field_check"
 
     describe "#format_request (single key/value pair)" do
+
       context "when it receives an event" do
         # {
         #   "request" => "sender data",
@@ -122,11 +126,13 @@ describe LogStash::Outputs::Zabbix do
           expect(diff).to be < 3 # It should take less than 3 seconds for this.
         end
       end
-    end
+
+    end # "#format_request (single key/value pair)"
 
     describe "#format_request (multiple key/value pairs)" do
       let(:multival_event) { LogStash::Event.new(multi_value) }
       let(:m_output) { LogStash::Outputs::Zabbix.new(mzabout) }
+
       context "when it receives an event and is configured for multiple values" do
         subject { m_output.format_request(multival_event) }
         it "should return a Zabbix sender data object with a data array" do
@@ -136,7 +142,7 @@ describe LogStash::Outputs::Zabbix do
           expect(subject['data'][0]['host']).to eq(zabhost)
         end
         it "should return a Zabbix sender data object with the correct key [0]" do
-          expect(subject['data'][0]['key']).to eq(zabkey)
+          expect(subject['data'][0]['key']).to eq('multi1')
         end
         it "should return a Zabbix sender data object with the correct value [0]" do
           expect(subject['data'][0]['value']).to eq('value1')
@@ -148,7 +154,7 @@ describe LogStash::Outputs::Zabbix do
           expect(subject['data'][1]['host']).to eq(zabhost)
         end
         it "should return a Zabbix sender data object with the correct key [1]" do
-          expect(subject['data'][1]['key']).to eq('zabbix.key2')
+          expect(subject['data'][1]['key']).to eq('multi2')
         end
         it "should return a Zabbix sender data object with the correct value [1]" do
           expect(subject['data'][1]['value']).to eq('value2')
@@ -161,9 +167,11 @@ describe LogStash::Outputs::Zabbix do
           expect(diff).to be < 3 # It should take less than 3 seconds for this.
         end
       end
-    end
+
+    end # "#format_request (multiple key/value pairs)"
 
     describe "#response_check" do
+
       context "when it receives a success value" do
         subject { output.response_check(string_event, { "response" => "success" } ) }
         it "should return true" do
@@ -184,9 +192,11 @@ describe LogStash::Outputs::Zabbix do
           expect(subject).to eq(false)
         end
       end
-    end
+
+    end # "#response_check"
 
     describe "#info_check" do
+
       context "when it receives a success value" do
         let(:success_msg) { {"response" => "success", "info" => "processed 1; Failed 0; Total 1; seconds spent: 0.000018"} }
         subject { output.info_check(string_event, success_msg) }
@@ -209,33 +219,33 @@ describe LogStash::Outputs::Zabbix do
           expect(subject).to eq(false)
         end
       end
-    end
 
-  end
+    end # "#info_check"
+
+  end # "Unit Tests"
 
   describe "Integration Tests", :integration => true do
 
     before(:all) do
-      container = create_container(
+      @zabbix = Longshoreman.new(
         "#{IMAGE}:#{TAG}",    # Image to use
         NAME,                 # Container name
         {
           "Cmd" => ["run"],
           "Tty" => true,
-        }                     # Extra arguments, if any
+        }                     # Extra options, if any
       )
-      container.start
-      zabbix_server_up?(get_host_ip, get_randomized_port(container, ZABBIX_PORT))
+      zabbix_server_up?(@zabbix.ip, @zabbix.container.rport(ZABBIX_PORT))
     end
 
     after(:all) do
-      cleanup_container(NAME)
+      @zabbix.cleanup
     end
 
     describe "#tcp_send", :integration => true do
-      let(:container) { Docker::Container.get(NAME) }
-      let(:port) { get_randomized_port(container, ZABBIX_PORT) }
-      let(:host) { get_host_ip }
+      let(:port) { @zabbix.container.rport(ZABBIX_PORT) }
+      let(:host) { @zabbix.ip }
+
       context "when the Zabbix server responds with 'success'" do
         subject { output.tcp_send(string_event) }
         it "should return true" do
@@ -251,12 +261,24 @@ describe LogStash::Outputs::Zabbix do
         end
       end
 
-    end
+      context "when multiple values are sent" do
+        let(:port) { @zabbix.container.rport(ZABBIX_PORT) }
+        let(:host) { @zabbix.ip }
+        let(:multival_event) { LogStash::Event.new(multi_value) }
+        let(:m_output) { LogStash::Outputs::Zabbix.new(mzabout) }
+
+        subject { m_output.tcp_send(multival_event) }
+        it "should return true" do
+          expect(subject).to eq(true)
+        end
+      end
+
+    end # "#tcp_send", :integration => true
 
     describe "#send_to_zabbix", :integration => true do
-      let(:container) { Docker::Container.get(NAME) }
-      let(:port) { get_randomized_port(container, ZABBIX_PORT) }
-      let(:host) { get_host_ip }
+      let(:port) { @zabbix.container.rport(ZABBIX_PORT) }
+      let(:host) { @zabbix.ip }
+
       context "when an event is sent successfully" do
         subject { output.send_to_zabbix(string_event) }
         it "should return true" do
@@ -273,8 +295,8 @@ describe LogStash::Outputs::Zabbix do
         end
       end
 
-    end
+    end # "#send_to_zabbix", :integration => true
 
-  end
+  end # "Integration Tests", :integration => true
 
-end
+end # describe LogStash::Outputs::Zabbix
