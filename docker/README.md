@@ -1,6 +1,6 @@
 # Docker Image For Testing This Plugin
 
-The current image tag is: `zabbix_v2.2.2`
+The current image tag is: `latest`
 
 ## Docker Hub
 
@@ -8,7 +8,7 @@ The completed image is hosted at https://registry.hub.docker.com/u/untergeek/log
 
 You can manually pull it to your Docker installation by running
 
-    docker pull untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2
+    docker pull untergeek/logstash_output_zabbix_rspec:latest
 
 Learn more about Docker at http://docs.docker.com
 
@@ -48,21 +48,21 @@ docker commit \
   --author="Aaron Mildenstein <aaron@mildensteins.com>" \
   --message="Populated the database" \
   IMAGE_ID \
-  untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2
+  untergeek/logstash_output_zabbix_rspec:latest
 ```
 
 #### 4. Push the image to Docker Hub:
 
 The image is then pushed to the Docker Hub:
 
-    docker push untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2
+    docker push untergeek/logstash_output_zabbix_rspec:latest
 
 ### Running the image
 
 While the RSpec test handles creating a container from this image, and then
-deleting when done, you can manually run the image, if needed:
+deletes it when done, you can manually run the image, if needed:
 
-    docker run -i --name="logstash_zabbix_rspec" -d -p 10051:10051 untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2 run
+    docker run -i --name="logstash_zabbix_rspec" -t -d -p 10051:10051 untergeek/logstash_output_zabbix_rspec:latest run
 
 This command ensures that port 10051 is forwarded from the container to the
 container host.  The `run` command at the end runs `run.sh` as in this directory.
@@ -71,7 +71,7 @@ container host.  The `run` command at the end runs `run.sh` as in this directory
 
 You can also run Zabbix interactively, as though you were on the server:
 
-    docker run -i -t -p 10051:10051 untergeek/logstash_output_zabbix_rspec:zabbix_v2.2.2 /bin/bash
+    docker run -i -t -p 10051:10051 untergeek/logstash_output_zabbix_rspec:latest /bin/bash
 
 At this point, you'd need to run `service mysql start` and `service zabbix-server start`
 to fully initialize the server, but you have the ability to see the logs, or
