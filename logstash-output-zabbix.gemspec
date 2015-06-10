@@ -23,5 +23,5 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "logstash-codec-plain"
   s.add_development_dependency "logstash-devutils", ">= 0.0.12"
   s.add_development_dependency "logstash-filter-mutate"
-  s.add_development_dependency "docker-api"
+  s.add_development_dependency "longshoreman"
 end
