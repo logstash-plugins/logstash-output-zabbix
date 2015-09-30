@@ -153,7 +153,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
   end
 
   def response_check(event, data)
-    # {"response"=>"success", "info"=>"Processed 0; Failed 1; Total 1; seconds spent: 0.000018"}
+    # {"response"=>"success", "info"=>"Processed 0 Failed 1 Total 1 seconds spent: 0.000018"}
     unless data["response"] == "success"
       @logger.error("Failed to send event to Zabbix",
         :zabbix_response => data,
@@ -166,7 +166,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
   end
 
   def info_check(event, data)
-    # {"response"=>"success", "info"=>"processed 0; Failed 1; Total 1; seconds spent: 0.000018"}
+    # {"response"=>"success", "info"=>"Processed 0 Failed 1 Total 1 seconds spent: 0.000018"}
     if !data.is_a?(Hash)
       @logger.error("Zabbix server at #{@zabbix_server_host} responded atypically.",
         :returned_data => data
@@ -174,8 +174,8 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
       return false
     end
     # Prune the semicolons, then turn it into an array
-    info = (data["info"].delete! ';').split()
-    # ["processed", "0", "Failed", ";", "Total", "1", "seconds", "spent:", "0.000018"]
+    info = (data["info"].delete! ' ').split()
+    # ["processed", "0", "Failed", "1", "Total", "1", "seconds", "spent:", "0.000018"]
     failed = info[3].to_i
     total = info[5].to_i
     if failed == total
