@@ -234,7 +234,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
 
   public
   def receive(event)
-    return unless output?(event)
+    
     return unless field_check(event, @zabbix_host)
     send_to_zabbix(event)
   end # def event
