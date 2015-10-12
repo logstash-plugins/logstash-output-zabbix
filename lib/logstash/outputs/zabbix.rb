@@ -174,8 +174,8 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
       return false
     end
     # Prune the semicolons, then turn it into an array
-    info = (data["info"].delete! ';').split()
-    # ["processed", "0", "Failed", ";", "Total", "1", "seconds", "spent:", "0.000018"]
+    info = data["info"].tr(';', '').split()
+    # ["processed", "0", "Failed", "1", "Total", "1", "seconds", "spent:", "0.000018"]
     failed = info[3].to_i
     total = info[5].to_i
     if failed == total
