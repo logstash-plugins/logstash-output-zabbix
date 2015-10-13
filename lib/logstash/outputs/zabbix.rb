@@ -208,7 +208,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
         # Did the message get received by Zabbix?
         response_check(event, resp)
       end
-    rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
+    rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ECONNRESET
       @logger.error("Connection error.  Unable to connect to Zabbix server",
         :server => @zabbix_server_host,
         :port => @zabbix_server_port.to_s
