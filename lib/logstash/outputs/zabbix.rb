@@ -57,6 +57,9 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
   # A single field name which holds the value you intend to use as the Zabbix
   # item key. This can be a sub-field of the @metadata field.
   # This directive will be ignored if using `multi_value`
+  #
+  # IMPORTANT: `zabbix_key` is required if not using `multi_value`.
+  #
   config :zabbix_key, :validate => :string
 
   # The field name which holds the value you want to send.
