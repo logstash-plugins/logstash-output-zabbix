@@ -1,7 +1,18 @@
+---
+#sudo: required
 sudo: false
+jdk: oraclejdk8
+env:
+ - INTEGRATION=false
+# - INTEGRATION=true
 language: ruby
-cache: bundler
+cache:
+  bundler: true
+#services:
+#  - docker
 rvm:
-  - jruby-1.7.23
-script: 
-  - bundle exec rspec spec
+  - jruby-1.7.25
+#before_install:
+#  - docker pull untergeek/logstash_output_zabbix_rspec:latest
+#  - docker run -i --name="logstash_zabbix_rspec" -t -d -p 10051:10051 untergeek/logstash_output_zabbix_rspec:latest run
+script: "./travis-run.sh"
