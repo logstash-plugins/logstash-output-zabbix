@@ -104,7 +104,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
 
   public
   def field_check(event, fieldname)
-    if !event[fieldname]
+    if !event.get(fieldname)
       @logger.warn("Field referenced by #{fieldname} is missing")
       false
     else
@@ -142,10 +142,10 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
     data = []
     (0..validated.length-1).step(2) do |idx|
       data << {
-        "host"  => event[@zabbix_host],
-        "key"   => event[validated[idx]],
-        "value" => event[validated[idx+1]],
-        "clock" => event["@timestamp"].to_i
+        "host"  => event.get(@zabbix_host),
+        "key"   => event.get(validated[idx]),
+        "value" => event.get(validated[idx+1]),
+        "clock" => event.get("@timestamp").to_i
       }
     end
     {
@@ -183,12 +183,12 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
     total = info[5].to_i
     if failed == total
       @logger.warn("Zabbix server at #{@zabbix_server_host} rejected all items sent.",
-        :zabbix_host => event[@zabbix_host]
+        :zabbix_host => event.get(@zabbix_host)
       )
       false
     elsif failed > 0
       @logger.warn("Zabbix server at #{@zabbix_server_host} rejected #{info[3]} item(s).",
-        :zabbix_host => event[@zabbix_host]
+        :zabbix_host => event.get(@zabbix_host)
       )
       false
     elsif failed == 0 && total > 0
@@ -237,7 +237,7 @@ class LogStash::Outputs::Zabbix < LogStash::Outputs::Base
 
   public
   def receive(event)
-    
+
     return unless field_check(event, @zabbix_host)
     send_to_zabbix(event)
   end # def event
