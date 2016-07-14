@@ -1,3 +1,6 @@
+## 3.0.1
+  - Relax constraint on logstash-core-plugin-api to >= 1.60 <= 2.99
+
 # 3.0.0
   - Breaking: Updated plugin to use new Java Event APIs
   - Use zabbix_protocol 0.1.5 or greater (tasty fixes for Zabbix)
