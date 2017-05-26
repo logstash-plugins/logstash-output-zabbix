@@ -1,18 +1,21 @@
 ---
-#sudo: required
 sudo: false
-jdk: oraclejdk8
-env:
- - INTEGRATION=false
-# - INTEGRATION=true
 language: ruby
-cache:
-  bundler: true
-#services:
-#  - docker
+cache: bundler
+env:
 rvm:
   - jruby-1.7.25
-#before_install:
-#  - docker pull untergeek/logstash_output_zabbix_rspec:latest
-#  - docker run -i --name="logstash_zabbix_rspec" -t -d -p 10051:10051 untergeek/logstash_output_zabbix_rspec:latest run
-script: "./travis-run.sh"
+matrix:
+  include:
+    - rvm: jruby-1.7.25
+      env: LOGSTASH_BRANCH=master
+    - rvm: jruby-1.7.25
+      env: LOGSTASH_BRANCH=5.x
+    - rvm: jruby-9.1.9.0
+      env: LOGSTASH_BRANCH=feature/9000
+  allow_failures:
+    - rvm: jruby-9.1.9.0
+  fast_finish: true
+install: true
+script: ci/build.sh
+jdk: oraclejdk8
