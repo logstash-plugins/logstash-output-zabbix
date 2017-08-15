@@ -1,3 +1,6 @@
+## 3.0.3
+  - Fix some documentation issues
+
 ## 3.0.1
   - Relax constraint on logstash-core-plugin-api to >= 1.60 <= 2.99
 
