@@ -1,5 +1,6 @@
 :plugin: zabbix
 :type: output
+:default_codec: plain
 
 ///////////////////////////////////////////
 START - GENERATED VARIABLES, DO NOT EDIT!
@@ -158,3 +159,5 @@ This directive will be ignored if using `multi_value`
 
 [id="plugins-{type}s-{plugin}-common-options"]
 include::{include_path}/{type}.asciidoc[]
+
+:default_codec!:
