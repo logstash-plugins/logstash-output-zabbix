@@ -21,7 +21,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "logstash-core-plugin-api", ">= 1.60", "<= 2.99"
   s.add_runtime_dependency "zabbix_protocol", ">= 0.1.5"
   s.add_runtime_dependency "logstash-codec-plain"
-  s.add_development_dependency "logstash-devutils", ">= 0.0.12"
+  s.add_development_dependency "logstash-devutils", ">= 1.0.0"
   s.add_development_dependency "logstash-filter-mutate"
   s.add_development_dependency "longshoreman"
 end
